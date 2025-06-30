@@ -56,6 +56,11 @@ export default function Home() {
     return <CampaignSelector onCampaignSelect={handleCampaignSelect} />
   }
 
+  const handleExpandGraph = () => {
+    // TODO: Implement graph explosion logic
+    alert('Expand Graph clicked! (stub)')
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <TopBar onCreateNode={() => setIsNodeModalOpen(true)} />
@@ -63,7 +68,7 @@ export default function Home() {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar onBackToCampaigns={handleBackToCampaigns} />
         <div className="flex-1 relative overflow-hidden">
-          <RelationshipGraph />
+          <RelationshipGraph onExpandGraph={handleExpandGraph} />
         </div>
       </div>
 

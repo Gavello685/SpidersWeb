@@ -41,7 +41,7 @@ export function Sidebar({ onBackToCampaigns }: SidebarProps) {
   return (
     <div className="w-80 border-r bg-muted/30 flex flex-col overflow-hidden">
       <div className="p-4 border-b">
-        <Button variant="ghost" size="sm" onClick={onBackToCampaigns} className="mb-2 w-full justify-start">
+        <Button variant="ghost" size="sm" onClick={onBackToCampaigns} className="mb-2 w-full justify-start" aria-label="Back to Campaigns">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Campaigns
         </Button>

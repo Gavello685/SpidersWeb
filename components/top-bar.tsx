@@ -1,20 +1,22 @@
 "use client"
 
-import type React from "react"
-
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Plus, Download, Upload, Undo, Redo, Save } from "lucide-react"
 import { useGraphStore } from "@/lib/store"
 import { CampaignStorage } from "@/lib/storage"
 import { useRef } from "react"
+import { useTheme } from "next-themes"
+import { Sun, Moon } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface TopBarProps {
-  onCreateNode: () => void
+  onCreateNode: any
+  onExpandGraph?: () => void
 }
 
-export function TopBar({ onCreateNode }: TopBarProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+export function TopBar({ onCreateNode, onExpandGraph }: TopBarProps) {
+  const fileInputRef = useRef<any>(null)
 
   const { currentCampaign, saveCampaign, undo, redo, canUndo, canRedo, setCurrentCampaign, loadCampaigns } =
     useGraphStore()
@@ -91,6 +93,13 @@ export function TopBar({ onCreateNode }: TopBarProps) {
     }
   }
 
+  const { theme, setTheme } = useTheme()
+  const isDark = theme === "dark"
+
+  const handleThemeToggle = () => {
+    setTheme(isDark ? "light" : "dark")
+  }
+
   return (
     <div className="border-b bg-background p-3">
       <div className="flex items-center justify-between">
@@ -135,6 +144,26 @@ export function TopBar({ onCreateNode }: TopBarProps) {
           >
             <Save className="w-4 h-4" />
           </Button>
+
+          {/* Theme toggle button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleThemeToggle}
+                  aria-label="Toggle dark mode"
+                  className="ml-2"
+                >
+                  {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isDark ? "Switch to light mode" : "Switch to dark mode"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 

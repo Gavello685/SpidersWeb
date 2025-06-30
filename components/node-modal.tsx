@@ -29,6 +29,16 @@ export function NodeModal({ open, onOpenChange }: NodeModalProps) {
   })
   const [newTag, setNewTag] = useState("")
 
+  // Dynamic status options based on node type
+  const statusOptions: Record<string, string[]> = {
+    NPC: ["Alive", "Dead", "Unknown", "Missing"],
+    PC: ["Alive", "Dead", "Unknown", "Missing"],
+    Faction: ["Active", "Inactive"],
+    Location: ["Known", "Unknown", "Lost"],
+    Abstract: ["Active", "Inactive", "Dormant"],
+  }
+  const currentStatusOptions = statusOptions[formData.type] || ["Alive", "Dead", "Unknown", "Missing"]
+
   useEffect(() => {
     if (selectedNode) {
       setFormData({
@@ -48,6 +58,28 @@ export function NodeModal({ open, onOpenChange }: NodeModalProps) {
       })
     }
   }, [selectedNode])
+
+  // Guarantee: reset form when modal closes and no node is selected
+  useEffect(() => {
+    if (!open && !selectedNode) {
+      setFormData({
+        name: "",
+        type: "NPC",
+        status: "Alive",
+        description: "",
+        tags: [],
+      })
+      setNewTag("")
+    }
+  }, [open, selectedNode])
+
+  // Reset status to default if type changes and current status is not valid
+  useEffect(() => {
+    if (!currentStatusOptions.includes(formData.status)) {
+      setFormData((prev) => ({ ...prev, status: currentStatusOptions[0] }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.type])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -137,12 +169,9 @@ export function NodeModal({ open, onOpenChange }: NodeModalProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Alive">Alive</SelectItem>
-                  <SelectItem value="Dead">Dead</SelectItem>
-                  <SelectItem value="Unknown">Unknown</SelectItem>
-                  <SelectItem value="Missing">Missing</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
+                  {currentStatusOptions.map((option) => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
