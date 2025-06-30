@@ -1,0 +1,300 @@
+Skip to main content
+
+r/DnDBehindTheScreen
+
+Search in r/DnDBehin…
+
+r/DnDBehindTheScreen • 2 days ago
+hpkelly
+
+r/DnDBehindTheScreen
+
+I made a tool to track character and
+faction relationships
+Resources
+
+Hey all, I recently put together a web-based tool to help DMs map out
+and track character relationships in their campaigns. It’s called The
+Spider’s Web, and it’s free to use.
+The idea came from wanting a cleaner, more visual way to see how
+NPCs and players are connected — alliances, rivalries, family ties, secret
+plots, that kind of thing. It’s got a node-and-line interface where you
+can add characters and draw links between them with labels. Everything
+saves in your browser, so there’s no account or login needed.
+It’s definitely still a work in progress, but I’ve been using it in my own
+campaign and it’s been helpful for keeping track of all the moving parts.
+Would love to hear what you think, especially if you have suggestions or
+ideas for features that would make it more useful.
+28
+
+12
+
+Share
+
+9.2K views
+
+Create
+
+Joined
+
+D&D Creative Resources & Worldbuilding.
+For DMs. By DMs.
+/r/DnDBehindTheScreen is a subreddit for
+Dungeons & Dragons Dungeon Masters to
+trade tools, guides and resources. A growin…
+Show more
+Created Feb 4, 2015
+Public
+Community Guide
+
+531K
+
+22
+
+creative DMs
+
+Top 1%
+
+researching now
+
+Rank by size
+
+COMMUNITY ACHIEVEMENTS
+Elder
+1 unlocked
+
+View All
+
+See More Insights
+COMMUNITY BOOKMARKS
+
+Join the conversation
+Sort by: Best
+
+Search Comments
+
+ohcrapitsabbey • 1d ago
+
+Wiki
+
+RULES
+
+1
+
+Posting Criteria
+
+2
+
+Community Heart
+
+3
+
+Full body of text
+
+4
+
+No homebrew without context
+
+5
+
+Don't post art, shitposts,
+memes, or questions
+
+6
+
+No advertising, kickstarters, or
+giveaways
+
+7
+
+No AI slop
+
+
+
+Mobile experience isn’t great so far, I’ll check again on my PC
+Skip to main content
+later because it seems like a great app.
+
+DISCORD
+
+Create
+
+Minor feedback:
+
+
+
+On mobile at least, after creating a new campaign, the
+page starts slightly shifted down - it took me a minute to
+realise the button to Add Node was up the top, I had to
+scroll up.
+When adding a node, it would be cool to have the status
+automatically be more relevant to the type of node. E.g. a
+faction would only have “active” and “inactive” rather than
+“dead” and “alive”
+When adding a second node, it remembers the first node’s
+details.. useful sometimes, but having to delete the name
+and description before adding new is a bit cumbersome.
+Overall looks good, I can’t wait to try it out on my PC :)
+9
+
+Reply
+HypnotizedPotato • 1d ago
+
+I was about to leave very similar feedback. I had to put the
+page into desktop mode to make it usable on mobile. Even
+then, it was difficult to use. I also don't understand how to
+take all the actions on mobile, like creating a relationship
+between nodes. Overall it seems like a cool idea and I'll
+likewise try it out on the PC.
+
+FLAIR FILTERS
+Adventure
+
+AMA! (Active)
+
+Atlas of the Planes
+
+Codex of the Gods
+
+Dungeons
+
+Ecology of The
+
+Grimoire
+
+Mechanics
+
+NPCs
+
+Official
+
+Mini-Game
+
+One Shot
+
+Opinion/Discussion
+
+Plot/Story
+
+Puzzles/Riddles/Traps
+Tables
+
+Encounters
+
+Resources
+
+Theme Month
+
+Treasure
+
+Worldbuilding
+hpkelly OP • 1d ago
+
+Thank you for giving it a try in spite of the difficult
+mobile experience! Mobile definitely isn't where I
+want it to be yet, but I'm working on it and will
+hopefully have an update soon. I appreciate your
+feedback greatly!
+
+DM HELP NETWORK
+
+r/DMAcademy
+662,913 members
+
+r/BehindTheTables
+49,039 members
+
+hpkelly OP • 1d ago
+
+Thank you so much for the feedback! Mobile usability is
+definitely not where I want it to be right now, so this gives
+me some good goals to work towards. Thanks for giving it
+a shot, I hope it becomes even more useful for you.
+
+r/DMToolkit
+63,707 members
+
+r/dndmaps
+313,590 members
+
+r/DndAdventureWriter
+40,468 members
+ohcrapitsabbey • 8h ago
+
+r/DnDIdeas
+3,600 members
+
+No problem! Grabbed my macbook (macOS 12.0.1,
+Skip to main content
+Chrome browser) to test it out and have a bit more
+feedback - I imagine it's mostly designed for PC
+which I still haven't been able to test yet.
+* Zooming is very, very sensitive. One minute I have
+everything at 100%, then I scroll a tiny bit and I'm
+staring at ants on my monitor.
+* Panning also is a little awkward, shift and drag
+occasionally tries to highlight everything.
+* The card size doesn't adapt to one too many tags
+(https://i.imgur.com/PwrVbkK.png)
+* I think it would be useful to be able to hover over a
+card and have the notes pop up as a tooltip!
+Overall I really like the look of this tool so far, will
+keep it bookmarked and try to fill it out when I next
+do some prep to get some really in-depth usage out
+of it.
+Great job!
+
+N2tZ • 1d ago
+
+Looks great on a PC and it seems like an useful tool.
+
+hpkelly OP • 1d ago
+
+Thank you for giving it a shot!
+
+EviiPaladin • 1d ago
+
+Is there a way to not have two (2) separate directional
+relationships between the same characters overlap? For
+example, there is a character who loves one (1) character but
+the other character views the relationship as purely
+transactional. When I make two (2) separate relationship lines,
+they overlap each other, making it kinda useless and impossible
+to parse that way.
+
+hpkelly OP • 1d ago
+
+There absolutely is, and I thought I had knocked that bug
+out before making this post. I will be fixing it soon, thank
+you for letting me know it's still there!
+
+MODERATORS
+
+Create
+
+Message Mods
+
+u/famoushippopotamus
+Just here for the free torches and rope
+
+
+
+u/alienleprechaun Dire Corgi
+
+View all moderators
+
+Reddit Rules Privacy Policy User Agreement Accessibility
+Reddit, Inc. © 2025. All rights reserved.
+
+Nezraehl • 11h ago
+
+Create
+
+Just here to say thank you for sharing your work!
+
+
+hpkelly OP • 5h ago
+
+Thank you for checking it out!
+
+

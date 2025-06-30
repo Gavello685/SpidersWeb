@@ -1,0 +1,41 @@
+ohcrapitsabbey:
+Mobile experience isn't great so far, I'll check again on my PC later because it seems like a great app.
+
+Minor feedback:
+- On mobile at least, after creating a new campaign, the page starts slightly shifted down - it took me a minute to realise the button to Add Node was up the top, I had to scroll up.
+- When adding a node, it would be cool to have the status automatically be more relevant to the type of node. E.g. a faction would only have "active" and "inactive" rather than "dead" and "alive"
+- When adding a second node, it remembers the first node's details.. useful sometimes, but having to delete the name and description before adding new is a bit cumbersome.
+
+Overall looks good, I can't wait to try it out on my PC :)
+
+---
+
+HypnotizedPotato:
+I was about to leave very similar feedback. I had to put the page into desktop mode to make it usable on mobile. Even then, it was difficult to use. I also don't understand how to take all the actions on mobile, like creating a relationship between nodes. Overall it seems like a cool idea and I'll likewise try it out on the PC.
+
+---
+
+ohcrapitsabbey (second comment):
+No problem! Grabbed my macbook (macOS 12.0.1, Chrome browser) to test it out and have a bit more feedback - I imagine it's mostly designed for PC which I still haven't been able to test yet.
+- Zooming is very, very sensitive. One minute I have everything at 100%, then I scroll a tiny bit and I'm staring at ants on my monitor.
+- Panning also is a little awkward, shift and drag occasionally tries to highlight everything.
+- The card size doesn't adapt to one too many tags (https://i.imgur.com/PwrVbkK.png)
+- I think it would be useful to be able to hover over a card and have the notes pop up as a tooltip!
+
+Overall I really like the look of this tool so far, will keep it bookmarked and try to fill it out when I next do some prep to get some really in-depth usage out of it.
+Great job!
+
+---
+
+N2tZ:
+Looks great on a PC and it seems like an useful tool.
+
+---
+
+EviiPaladin:
+Is there a way to not have two (2) separate directional relationships between the same characters overlap? For example, there is a character who loves one (1) character but the other character views the relationship as purely transactional. When I make two (2) separate relationship lines, they overlap each other, making it kinda useless and impossible to parse that way.
+
+---
+
+Nezraehl:
+Just here to say thank you for sharing your work! 

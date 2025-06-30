@@ -1,0 +1,214 @@
+🧠 Project Name: NPC Relationship Web
+📘 Product Summary
+A visual, node-based interface for Dungeon Masters to map and maintain dynamic relationships between NPCs, factions, and players. Each node represents a person, group, or abstract concept (like a deity or organization). Connections between them carry metadata like trust, hostility, secrecy, or influence. The tool aids worldbuilding, improvisation, and political storytelling by showing at-a-glance how everyone is connected—and how those relationships evolve across time.
+
+🧱 1. Feature Set
+🧭 Core Functional Features
+1.1. Interactive Relationship Graph
+Drag-and-drop node positioning
+
+Zoom & pan (canvas view)
+
+Click to open node or edge details
+
+Multiple layouts: radial, force-directed, hierarchical
+
+1.2. Node Types
+NPC (default)
+
+Player Character (PC)
+
+Faction/Group
+
+Location (optional toggle)
+
+Abstract (e.g., prophecy, concept, ideology)
+
+Each type:
+
+Has a different color/icon
+
+Supports tags, description, portrait, status
+
+1.3. Relationship (Edge) Metadata
+Relationship type: Ally, Enemy, Neutral, Secret, Subordinate, etc.
+
+Strength (slider or 1–100)
+
+Directionality (one-way or mutual)
+
+Tags: Political, Romantic, Familial, Unknown
+
+Notes (events, motivations, lies)
+
+1.4. Timeline / Relationship Evolution
+Record changes over time per relationship
+
+History log: who hated whom, when and why
+
+Time-stamped events tied to relationships (e.g., betrayal, marriage, debt repaid)
+
+1.5. Campaigns & Session Integration
+Campaign = top-level container
+
+Session tagging: “These connections changed in session 12”
+
+Filter relationships active in current session or past arcs
+
+1.6. Search & Filter
+Filter by type, tag, strength threshold, relationship type
+
+Keyword search on names, notes, tags
+
+1.7. Player Mode (Optional View)
+Generate a read-only view of the graph for players
+
+Selectively hide nodes or edges (marked "hidden from players")
+
+Export as PNG, PDF, or interactive embed
+
+1.8. Data Import/Export
+JSON and CSV import/export
+
+Export selected subgraph for reuse in another campaign
+
+1.9. Dark Mode + Accessibility
+Full dark mode support
+
+Tooltips for all icons
+
+Keyboard navigation for accessibility
+
+🧱 2. UI/UX Design
+🎨 Layout
+2.1. Dashboard
+List of campaigns → select campaign → load graph
+
+Quick actions: Create Node, Create Relationship, Import, Export
+
+2.2. Graph Editor View
+Left Sidebar: node/entity inspector
+
+Right Sidebar (toggle): session log, filter tools
+
+Top Bar: undo/redo, zoom controls, autosave status
+
+2.3. Modals
+Node Creation/Edit modal
+
+Relationship (Edge) Editor modal
+
+Timeline/History modal per connection
+
+2.4. Responsive Design
+Full functionality on desktop
+
+Mobile: view-only or reduced features (e.g., node notes only)
+
+⚙️ 3. Technical Architecture
+3.1. Frontend
+Component	Tech
+Framework	React (or Next.js if SSR needed)
+State Management	Zustand or Redux Toolkit
+Styling	Tailwind CSS
+Graphing Library	react-flow or Cytoscape.js
+Animation	Framer Motion for UI smoothness
+
+3.2. Backend
+Component	Tech
+API Layer	Node.js + Express or Next.js API routes
+Auth	Clerk.dev, Firebase Auth, or Supabase Auth
+Database	PostgreSQL or Firebase Firestore
+Realtime Sync (optional)	Socket.IO or Firebase for multiplayer use
+File Storage	Firebase Storage or Supabase Buckets (for portraits/images)
+
+📐 4. Data Models
+Entity: Node
+ts
+Copy
+Edit
+Node {
+  id: string;
+  campaignId: string;
+  name: string;
+  type: "NPC" | "PC" | "Faction" | "Location" | "Abstract";
+  tags: string[];
+  description: string;
+  portraitUrl?: string;
+  status: "Alive" | "Dead" | "Unknown" | "Missing";
+  createdAt: Date;
+  updatedAt: Date;
+}
+Entity: Relationship
+ts
+Copy
+Edit
+Relationship {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  campaignId: string;
+  type: "Ally" | "Enemy" | "Neutral" | "Romantic" | "Rival" | "Secret";
+  strength: number; // 1 to 100
+  directional: boolean;
+  hiddenFromPlayers: boolean;
+  tags: string[];
+  notes: string;
+  history: RelationshipChange[];
+}
+Entity: RelationshipChange
+ts
+Copy
+Edit
+RelationshipChange {
+  timestamp: Date;
+  summary: string;
+  sessionRef?: number;
+  previousStrength?: number;
+  newStrength?: number;
+}
+🧪 5. Testing Strategy
+Unit Tests: Component-level (React Testing Library + Jest)
+
+Integration Tests: Graph manipulation flows (e.g., create node → create edge → edit edge)
+
+End-to-End Tests: Using Cypress
+
+Manual Testing: Drag-drop UX, mobile view, dark mode
+
+🚀 6. Development Roadmap
+Phase	Deliverables
+v0.1 (MVP)	Node creation, editable graph, static edge types
+v0.2	Relationship metadata, edge notes, filtering
+v0.3	Timeline view, session tagging
+v0.4	Player mode, export/import, print views
+v1.0	Campaign management, auth, mobile support, export formats
+
+📈 7. Future Enhancements
+Relationship suggestion engine (e.g., "you forgot this person is the brother of...")
+
+Node duplication templates
+
+Integration with Foundry VTT / Owlbear Rodeo via linkable characters
+
+Custom graph visual styles or themes
+
+Full session recap integration with timeline sync (cross-link with Project 10)
+
+🧾 8. DevOps & Hosting
+Task	Tool
+Hosting	Vercel or Netlify (frontend), Render or Supabase (backend/db)
+CI/CD	GitHub Actions
+Error Monitoring	Sentry
+Analytics	PostHog or Plausible (optional, user-respecting)
+Deployment Environments	dev, staging, prod via feature branches
+
+📌 9. Documentation & Dev Support
+API Docs: OpenAPI spec with Swagger UI
+
+Internal Docs: Storybook for components, Notion/wiki for architecture
+
+Onboarding: Setup script (Docker or npm init) for local dev
+
+Demo Data: Prebuilt fantasy world templates for demo/testing
+

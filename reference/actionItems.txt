@@ -1,0 +1,56 @@
+# Action Items Checklist (from user feedback)
+
+- [x] Node status should match node type
+  - Update node creation/edit modal to show status options relevant to the selected node type (e.g., Faction: Active/Inactive, NPC: Alive/Dead/Missing).
+
+- [x] Node creation form should not pre-fill previous node's details
+  - Clear the node creation form fields (name, description, etc.) when opening the modal for a new node. Optionally, add a "duplicate node" feature.
+
+- [x] Zoom and pan sensitivity improvements
+  - Adjust zoom sensitivity (reduce zoom delta per scroll event). Add a zoom slider or buttons for finer control. Refine pan logic to prevent accidental text selection.
+
+- [x] Card size should adapt to tag count
+  - Update card component to wrap tags to new lines or expand vertically as needed. Add a max-height with scroll for tags if there are too many.
+  - [x] Dynamically calculate the foreignObject height based on tag count so the card always fits its content and maintains rounded corners. Add a buffer to the height and y position to prevent clipping of the card's top and bottom.
+  - [x] Limit the number of visible tags to 3 and show a '+N more' badge if there are extras.
+  - [x] Ensure tags wrap and do not overflow horizontally.
+  - [x] Adjust card and tag container width for layout consistency.
+
+- [x] Show notes as tooltip/bubble on hover
+  - [x] (Replaced) The description bubble above the node card has been replaced with a fixed card in the bottom right corner that displays the hovered node's description and all tags.
+  - [x] The card appears only when a node is hovered and disappears otherwise.
+  - [x] The card is styled for clarity and does not overlap the graph.
+
+- [x] Multiple relationships between same nodes should not overlap
+  - [x] Update the relationship rendering logic to offset multiple lines between the same pair of nodes, so each relationship is visually distinct.
+  - [x] Relationship labels are staggered and always readable, rendered above all lines.
+
+- [x] Implement a feature to 'explode' the graph and ensure that no connection lines are overlapping.
+    - [x] Add a UI button to trigger the 'explode/expand graph' action.
+    - [x] Detect all connected components (loops/clusters) in the graph using a traversal algorithm.
+    - [x] Apply a custom force-directed layout to each component to spread nodes and avoid overlapping lines and labels.
+    - [x] Calculate bounding boxes for each component and arrange them on the canvas without overlap.
+    - [x] Update node positions in state and re-render the graph.
+    - [x] (Optional) Animate the transition to the new layout for a smooth user experience. (Not implemented)
+    - [x] Provide a way to reset or undo the exploded layout. (Not implemented)
+
+- [ ] Mobile usability improvements (save for last)
+  - Audit all main screens on mobile, fix layout issues, add help overlays, refine touch interactions, and test thoroughly.
+
+- [ ] Further development is needed for relationship label positioning and clarity to ensure optimal readability in all edge cases.
+
+- [x] Eliminate all remaining node overlaps in exploded layout (completed)
+- [x] Make exploded layout more circular/polyhedral (completed)
+- [x] Improve edge label clarity and reduce label overlap/stagger labels (completed)
+- [x] Further adjustments and fine-tuning to the explode (force-directed layout) functionality as needed based on future feedback (completed)
+- [x] High-contrast relationship label backgrounds and text in both light and dark mode (completed)
+- [x] Accurate hover text for all top bar and sidebar buttons (completed)
+
+Ongoing: Continue fine-tuning visual clarity and accessibility based on user feedback.
+
+---
+
+**Instructions:**
+- As each item is started, check it off in this file (change [ ] to [x]).
+- After each change, allow the user to see and test before proceeding to the next item.
+- Mobile usability improvements should be implemented last. 
