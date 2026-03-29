@@ -79,6 +79,7 @@ export interface EdgeData {
   direction?: "source-to-target" | "target-to-source" | "bidirectional"
   hiddenFromPlayers?: boolean
   history?: RelationshipHistoryEntry[]
+  customLabel?: string
 }
 
 export interface Edge {

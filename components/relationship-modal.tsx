@@ -33,6 +33,7 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
     directional: false,
     direction: "source-to-target" as "source-to-target" | "target-to-source" | "bidirectional",
     hiddenFromPlayers: false,
+    customLabel: "",
   })
   const [newTag, setNewTag] = useState("")
   // History note form
@@ -52,6 +53,7 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
         directional: selectedEdge.data?.directional || false,
         direction: selectedEdge.data?.direction || "source-to-target",
         hiddenFromPlayers: selectedEdge.data?.hiddenFromPlayers || false,
+        customLabel: selectedEdge.data?.customLabel || "",
       })
     }
   }, [selectedEdge])
@@ -304,6 +306,17 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
               <span>Weak</span>
               <span>Strong</span>
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="customLabel">Custom label <span className="text-muted-foreground font-normal">(optional — overrides auto-generated label)</span></Label>
+            <Input
+              id="customLabel"
+              placeholder={`${formData.relationshipType} (${formData.strength[0]})`}
+              value={formData.customLabel}
+              onChange={(e) => setFormData((prev) => ({ ...prev, customLabel: e.target.value }))}
+              className="mt-1"
+            />
           </div>
 
           <div className="flex items-center space-x-2">

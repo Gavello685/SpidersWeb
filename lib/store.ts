@@ -49,6 +49,13 @@ interface GraphState {
   searchTerm: string
   filteredNodes: Node[]
 
+  // Filter state
+  activeTagFilters: string[]
+  showOnlyPlayerVisible: boolean
+  toggleTagFilter: (tag: string) => void
+  setShowOnlyPlayerVisible: (v: boolean) => void
+  clearFilters: () => void
+
   // License state
   isPremium: boolean
   licenseKey: string | null
@@ -143,6 +150,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   canRedo: false,
   searchTerm: "",
   filteredNodes: [],
+  activeTagFilters: [],
+  showOnlyPlayerVisible: false,
   isPremium: false,
   licenseKey: null,
   settings: { sheetViewMode: "modal" },
@@ -401,7 +410,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         ? {
             ...edge,
             data: { ...edge.data, ...data, history: updatedHistory },
-            label: `${data.relationshipType} (${data.strength})`,
+            label: data.customLabel?.trim()
+              ? data.customLabel.trim()
+              : `${data.relationshipType} (${data.strength})`,
           }
         : edge,
     )
@@ -531,6 +542,18 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
     set({ filteredNodes: filtered })
   },
+
+  toggleTagFilter: (tag) => {
+    const { activeTagFilters } = get()
+    const next = activeTagFilters.includes(tag)
+      ? activeTagFilters.filter((t) => t !== tag)
+      : [...activeTagFilters, tag]
+    set({ activeTagFilters: next })
+  },
+
+  setShowOnlyPlayerVisible: (v) => set({ showOnlyPlayerVisible: v }),
+
+  clearFilters: () => set({ activeTagFilters: [], showOnlyPlayerVisible: false }),
 
   // ── Relationship history ─────────────────────────────────────────────────
   addRelationshipHistoryNote: (edgeId, entry) => {

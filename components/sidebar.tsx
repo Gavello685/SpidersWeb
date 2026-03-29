@@ -5,15 +5,33 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Search, Users, User, MapPin, Sparkles, ArrowLeft } from "lucide-react"
+import { Search, Users, User, MapPin, Sparkles, ArrowLeft, Filter, Eye, X } from "lucide-react"
 import { useGraphStore } from "@/lib/store"
+import { cn } from "@/lib/utils"
 
 interface SidebarProps {
   onBackToCampaigns: () => void
 }
 
 export function Sidebar({ onBackToCampaigns }: SidebarProps) {
-  const { nodes, edges, filteredNodes, searchTerm, setSearchTerm, currentCampaign, setSelectedNode } = useGraphStore()
+  const {
+    nodes,
+    edges,
+    filteredNodes,
+    searchTerm,
+    setSearchTerm,
+    currentCampaign,
+    setSelectedNode,
+    activeTagFilters,
+    showOnlyPlayerVisible,
+    toggleTagFilter,
+    setShowOnlyPlayerVisible,
+    clearFilters,
+  } = useGraphStore()
+
+  // All unique tags across all nodes in the campaign
+  const allTags = Array.from(new Set(nodes.flatMap((n) => n.data.tags ?? []))).sort()
+  const hasActiveFilters = activeTagFilters.length > 0 || showOnlyPlayerVisible
 
   const nodeTypes = [
     { type: "NPC", icon: User, count: nodes.filter((n) => n.data?.type === "NPC").length },
@@ -98,6 +116,68 @@ export function Sidebar({ onBackToCampaigns }: SidebarProps) {
                   )}
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filter Graph
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  title="Clear all filters"
+                >
+                  <X className="w-3 h-3" />
+                  Clear
+                </button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowOnlyPlayerVisible(!showOnlyPlayerVisible)}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-colors",
+                showOnlyPlayerVisible
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border hover:bg-muted"
+              )}
+            >
+              <Eye className="w-4 h-4 shrink-0" />
+              Player view (hide DM-only)
+            </button>
+
+            {allTags.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">Filter by tag</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {allTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTagFilter(tag)}
+                      className={cn(
+                        "px-2 py-0.5 rounded-full text-xs border transition-colors",
+                        activeTagFilters.includes(tag)
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border hover:bg-muted"
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {allTags.length === 0 && (
+              <p className="text-xs text-muted-foreground">No tags in this campaign yet.</p>
             )}
           </CardContent>
         </Card>

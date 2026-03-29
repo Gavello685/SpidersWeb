@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { User, Users, MapPin, Sparkles, Plus, Minus, RefreshCw, Expand, ChevronDown, ChevronUp, EyeOff, X } from "lucide-react"
 import { useGraphStore } from "@/lib/store"
@@ -57,6 +57,16 @@ const getEdgeColor = (type: string) => {
   }
 }
 
+const getEdgeFillHex = (type: string) => {
+  switch (type) {
+    case "Ally":     return "#22c55e"
+    case "Enemy":    return "#ef4444"
+    case "Romantic": return "#ec4899"
+    case "Secret":   return "#a855f7"
+    default:         return "#6b7280"
+  }
+}
+
 export function RelationshipGraph() {
   const svgRef = useRef<SVGSVGElement>(null)
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null)
@@ -100,10 +110,35 @@ export function RelationshipGraph() {
     addGroup,
     updateGroup,
     removeGroup,
+    activeTagFilters,
+    showOnlyPlayerVisible,
+    panelNodeId,
   } = useGraphStore()
 
   const tagColors: Record<string, string> = currentCampaign?.tagColors ?? {}
   const groups = currentCampaign?.groups ?? []
+
+  // Derive visible nodes/edges from active filters
+  const visibleNodes = useMemo(() => {
+    let result = nodes
+    if (activeTagFilters.length > 0) {
+      result = result.filter((n) => n.data.tags.some((t) => activeTagFilters.includes(t)))
+    }
+    if (showOnlyPlayerVisible) {
+      result = result.filter((n) => !n.data.hiddenFromPlayers)
+    }
+    return result
+  }, [nodes, activeTagFilters, showOnlyPlayerVisible])
+
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes])
+
+  const visibleEdges = useMemo(() => {
+    let result = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+    if (showOnlyPlayerVisible) {
+      result = result.filter((e) => !e.data.hiddenFromPlayers)
+    }
+    return result
+  }, [edges, visibleNodeIds, showOnlyPlayerVisible])
 
   // Context menu state (for right-click → group)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
@@ -186,8 +221,11 @@ export function RelationshipGraph() {
       const mouseX = e.clientX - svgRect.left
       const mouseY = e.clientY - svgRect.top
 
-      // Calculate zoom factor (finer control)
-      const zoomFactor = e.deltaY > 0 ? 0.96 : 1.04
+      // Scale zoom proportionally to deltaY so trackpad (small deltas) is smooth
+      // and mouse wheel (large deltas, ~100) gives ~10% per notch.
+      // Clamp to avoid huge single jumps.
+      const clampedDelta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100)
+      const zoomFactor = Math.pow(0.999, clampedDelta)
       const newScale = Math.max(0.1, Math.min(5, scale * zoomFactor))
 
       // Calculate the point in graph coordinates before zoom
@@ -319,6 +357,8 @@ export function RelationshipGraph() {
   const startPan = useCallback(
     (e: React.MouseEvent) => {
       if (isShiftPressed && !isCreatingEdge && !isDragging) {
+        // Prevent the browser from selecting page text while panning with Shift+drag
+        e.preventDefault()
         setIsPanning(true)
         setLastPanPoint({ x: e.clientX, y: e.clientY })
       }
@@ -446,7 +486,7 @@ export function RelationshipGraph() {
   const getEdgeGroups = () => {
     const groups: { [key: string]: Edge[] } = {}
 
-    edges.forEach((edge) => {
+    visibleEdges.forEach((edge) => {
       // Create a consistent key for node pairs (regardless of direction)
       const key = [edge.source, edge.target].sort().join("-")
       if (!groups[key]) {
@@ -480,9 +520,11 @@ export function RelationshipGraph() {
     const startOffset = -totalWidth / 2
     const currentOffset = startOffset + edgeIndex * spacing
 
-    // Calculate perpendicular vector for offset
-    const dx = targetX - sourceX
-    const dy = targetY - sourceY
+    // Use canonical direction (sorted by node id) for the perpendicular so that
+    // edges going A→B and B→A both arc to opposite sides instead of the same side.
+    const canonicalFlip = sourceNode.id > targetNode.id
+    const dx = canonicalFlip ? sourceX - targetX : targetX - sourceX
+    const dy = canonicalFlip ? sourceY - targetY : targetY - sourceY
     const length = Math.sqrt(dx * dx + dy * dy)
     const perpX = -dy / length
     const perpY = dx / length
@@ -509,8 +551,14 @@ export function RelationshipGraph() {
     if (totalEdges > 1) {
       const spacing = 40
       const currentOffset = -((totalEdges - 1) * spacing) / 2 + edgeIndex * spacing
-      const dx = targetNode.position.x - sourceNode.position.x
-      const dy = targetNode.position.y - sourceNode.position.y
+      // Use canonical direction (sorted by node id) to match getEdgePath arc direction
+      const canonicalFlip = sourceNode.id > targetNode.id
+      const dx = canonicalFlip
+        ? sourceNode.position.x - targetNode.position.x
+        : targetNode.position.x - sourceNode.position.x
+      const dy = canonicalFlip
+        ? sourceNode.position.y - targetNode.position.y
+        : targetNode.position.y - sourceNode.position.y
       const length = Math.sqrt(dx * dx + dy * dy) || 1
       controlX = baseMidX + (-dy / length) * currentOffset
       controlY = baseMidY + (dx / length) * currentOffset
@@ -603,8 +651,10 @@ export function RelationshipGraph() {
       const startOffset = -totalWidth / 2
       const currentOffset = startOffset + edgeIndex * spacing
 
-      const dx = targetX - sourceX
-      const dy = targetY - sourceY
+      // Use canonical direction (sorted by node id) to match getEdgePath arc direction
+      const canonicalFlip = sourceNode.id > targetNode.id
+      const dx = canonicalFlip ? sourceX - targetX : targetX - sourceX
+      const dy = canonicalFlip ? sourceY - targetY : targetY - sourceY
       const length = Math.sqrt(dx * dx + dy * dy)
       const perpX = -dy / length
       const perpY = dx / length
@@ -613,10 +663,11 @@ export function RelationshipGraph() {
       baseMidY = baseMidY + perpY * currentOffset
     }
 
-    // Calculate the distance to determine number of arrows
+    // 1 arrow for short lines, 2 for medium, 3 for long
     const distance = Math.sqrt((targetX - sourceX) ** 2 + (targetY - sourceY) ** 2)
-    const numArrows = Math.max(2, Math.min(6, Math.floor(distance / 80))) // 2-6 arrows based on distance
+    const numArrows = Math.max(1, Math.min(3, Math.floor(distance / 120)))
 
+    const fillColor = getEdgeFillHex(edge.data.relationshipType)
     const arrows: JSX.Element[] = []
 
     if (edge.data.direction === "source-to-target" || edge.data.direction === "bidirectional") {
@@ -625,8 +676,8 @@ export function RelationshipGraph() {
         arrows.push(
           <g key={`arrow-forward-${index}`} transform={`translate(${point.x}, ${point.y}) rotate(${point.angle})`}>
             <polygon
-              points="-6,-3 6,0 -6,3"
-              className={cn("transition-all", getEdgeColor(edge.data.relationshipType).replace("stroke-", "fill-"))}
+              points="-8,-4 8,0 -8,4"
+              style={{ fill: fillColor }}
             />
           </g>,
         )
@@ -639,8 +690,8 @@ export function RelationshipGraph() {
         arrows.push(
           <g key={`arrow-backward-${index}`} transform={`translate(${point.x}, ${point.y}) rotate(${point.angle})`}>
             <polygon
-              points="-6,-3 6,0 -6,3"
-              className={cn("transition-all", getEdgeColor(edge.data.relationshipType).replace("stroke-", "fill-"))}
+              points="-8,-4 8,0 -8,4"
+              style={{ fill: fillColor }}
             />
           </g>,
         )
@@ -772,8 +823,8 @@ export function RelationshipGraph() {
         if (!node || !node.data.description) return null;
         return (
           <div
-            className="fixed bottom-6 right-6 z-50 bg-background border border-border rounded-xl shadow-lg p-4 text-sm text-foreground max-w-xs w-[320px] min-h-[80px] select-none"
-            style={{ pointerEvents: 'none' }}
+            className="fixed bottom-6 z-50 bg-background border border-border rounded-xl shadow-lg p-4 text-sm text-foreground max-w-xs w-[320px] min-h-[80px] select-none"
+            style={{ pointerEvents: 'none', right: panelNodeId ? '344px' : '24px' }}
           >
             <div className="mb-3 whitespace-pre-line break-words font-medium">
               {node.data.description}
@@ -892,7 +943,7 @@ export function RelationshipGraph() {
       <svg
         ref={svgRef}
         className="w-full h-full"
-        style={{ cursor: getCursorStyle() }}
+        style={{ cursor: getCursorStyle(), userSelect: isShiftPressed || isPanning ? "none" : undefined }}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseDown={startPan}
@@ -1086,17 +1137,26 @@ export function RelationshipGraph() {
           })}
 
           {/* Render nodes */}
-          {nodes.map((node) => {
+          {visibleNodes.map((node) => {
             const hasSheet = isPremium && !!node.data.sheet
             const isExpanded = hasSheet && expandedSheetNodes.has(node.id)
             const sheet = node.data.sheet
 
-            // Calculate dynamic height for the node card based on tag count
+            const maxVisibleTags = 3;
+            const visibleTags = node.data.tags.slice(0, maxVisibleTags);
+            const extraTagCount = node.data.tags.length - maxVisibleTags;
+
+            // Calculate dynamic height using the number of items actually displayed.
+            // Use tagsPerRow=2 (conservative for badge widths) to avoid overflow.
+            const displayedTagItems =
+              node.data.tags.length === 0
+                ? 0
+                : visibleTags.length + (extraTagCount > 0 ? 1 : 0);
+            const tagsPerRow = 2;
+            const tagRows = displayedTagItems > 0 ? Math.ceil(displayedTagItems / tagsPerRow) : 0;
             const baseHeight = 100;
-            const tagsPerRow = 3;
-            const tagRows = node.data.tags.length > 0 ? Math.ceil(node.data.tags.length / tagsPerRow) : 0;
             const buffer = 40;
-            const tagRowHeight = 32;
+            const tagRowHeight = 28;
             let dynamicHeight = baseHeight + tagRows * tagRowHeight + buffer;
 
             // Extra height when sheet is expanded inline
@@ -1109,10 +1169,6 @@ export function RelationshipGraph() {
               if ((sheet.customFields?.length ?? 0) > 0) dynamicHeight += (sheet.customFields!.length * 24) + 8
               dynamicHeight += 16 // bottom padding
             }
-
-            const maxVisibleTags = 3;
-            const visibleTags = node.data.tags.slice(0, maxVisibleTags);
-            const extraTagCount = node.data.tags.length - maxVisibleTags;
             const nodeWidth = isExpanded ? 240 : 200;
 
             return (
@@ -1139,7 +1195,7 @@ export function RelationshipGraph() {
                   }}
                 >
                   <div className={cn(
-                    "p-3 shadow-lg border-2 transition-all select-none rounded-xl bg-background border-border relative",
+                    "p-3 shadow-lg border-2 transition-all select-none rounded-xl bg-background border-border relative overflow-hidden",
                     isExpanded && "pb-2",
                     isDragging && dragNode === node.id && "shadow-xl border-primary scale-105",
                     hoveredNode === node.id && !isDragging && "border-primary/50 shadow-xl",
@@ -1171,7 +1227,7 @@ export function RelationshipGraph() {
                         <h3 className="font-semibold text-sm truncate select-none">{node.data.name}</h3>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge variant="outline" className="text-xs select-none">{node.data.type}</Badge>
-                          <Badge variant={node.data.status === "Alive" ? "default" : "secondary"} className="text-xs select-none">
+                          <Badge variant={["Alive", "Active", "Known"].includes(node.data.status) ? "default" : "secondary"} className="text-xs select-none">
                             {node.data.status}
                           </Badge>
                         </div>
