@@ -3,50 +3,14 @@
 import type React from "react"
 
 import { useRef, useEffect, useState, useCallback } from "react"
-import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { User, Users, MapPin, Sparkles, Plus, Minus, RefreshCw, Expand } from "lucide-react"
+import { User, Users, MapPin, Sparkles, Plus, Minus, RefreshCw, Expand, ChevronDown, ChevronUp, EyeOff, X } from "lucide-react"
 import { useGraphStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { createPortal } from "react-dom"
 import { useTheme } from "next-themes"
-
-// Custom types to replace ReactFlow types
-export type NodeType = "npc" | "pc" | "faction" | "location" | "abstract"
-
-export interface NodeData {
-  name: string
-  type: string
-  status: string
-  description: string
-  tags: string[]
-}
-
-export interface Node {
-  id: string
-  type: NodeType
-  position: { x: number; y: number }
-  data: NodeData
-}
-
-export interface EdgeData {
-  relationshipType: string
-  strength: number
-  notes: string
-  tags: string[]
-  directional?: boolean
-  direction?: "source-to-target" | "target-to-source" | "bidirectional"
-  hiddenFromPlayers?: boolean
-}
-
-export interface Edge {
-  id: string
-  source: string
-  target: string
-  data: EdgeData
-  label: string
-}
+import { getConnectedComponents, estimateLabelWidth, forceDirectedLayout } from "@/lib/graph-layout"
+export type { NodeType, NodeData, Node, EdgeData, Edge } from "@/lib/graph-types"
+import type { Node, Edge } from "@/lib/graph-types"
 
 const getNodeColor = (type: string) => {
   switch (type) {
@@ -93,8 +57,9 @@ const getEdgeColor = (type: string) => {
   }
 }
 
-export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => void }) {
+export function RelationshipGraph() {
   const svgRef = useRef<SVGSVGElement>(null)
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragNode, setDragNode] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -120,27 +85,37 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
     addNode,
     updateNode,
     removeEdge,
+    saveCampaign,
     selectedEdge,
     selectedNode,
+    isPremium,
+    expandedSheetNodes,
+    toggleSheetExpanded,
+    settings,
+    openNodePanel,
+    currentCampaign,
+    selectedNodeIds,
+    toggleNodeSelection,
+    clearNodeSelection,
+    addGroup,
+    updateGroup,
+    removeGroup,
   } = useGraphStore()
+
+  const tagColors: Record<string, string> = currentCampaign?.tagColors ?? {}
+  const groups = currentCampaign?.groups ?? []
+
+  // Context menu state (for right-click → group)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
+  // Group name dialog state
+  const [groupNamePrompt, setGroupNamePrompt] = useState<{ nodeIds: string[] } | null>(null)
+  const [groupNameInput, setGroupNameInput] = useState("")
+  // Group rename/delete state
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [editingGroupName, setEditingGroupName] = useState("")
 
   const { theme } = useTheme();
   const isDark = theme === "dark";
-
-  // Get hovered node position for effect dependency
-  const hoveredNodeObj = hoveredNode ? nodes.find((n) => n.id === hoveredNode) : null;
-  const hoveredNodeX = hoveredNodeObj?.position.x;
-  const hoveredNodeY = hoveredNodeObj?.position.y;
-
-  // Ref for the hovered node's SVG element
-  const hoveredNodeSvgRef = useRef<SVGCircleElement | null>(null);
-
-  // Ref for the hovered node's SVG rect (node card)
-  const hoveredNodeRectRef = useRef<SVGRectElement | null>(null);
-
-  // Node card dimensions for pointer alignment
-  const NODE_CARD_WIDTH = 260;
-  const NODE_CARD_HEIGHT = 100; // base height, may be larger with tags
 
   // Handle keyboard events
   useEffect(() => {
@@ -243,9 +218,13 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
 
   const handleNodeDoubleClick = useCallback(
     (node: Node) => {
-      setSelectedNode(node)
+      if (settings.sheetViewMode === "panel") {
+        openNodePanel(node.id)
+      } else {
+        setSelectedNode(node)
+      }
     },
-    [setSelectedNode],
+    [setSelectedNode, settings.sheetViewMode, openNodePanel],
   )
 
   const handleEdgeClick = useCallback(
@@ -291,6 +270,14 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
     (e: React.MouseEvent, nodeId: string) => {
       e.stopPropagation()
 
+      // Ctrl/Cmd+click: toggle multi-select (Pro only)
+      if (isPremium && (e.ctrlKey || e.metaKey)) {
+        toggleNodeSelection(nodeId)
+        return
+      }
+
+      dragStartPosRef.current = { x: e.clientX, y: e.clientY }
+
       const node = nodes.find((n) => n.id === nodeId)
       if (!node) return
 
@@ -316,7 +303,17 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         setDragNode(nodeId)
       }
     },
-    [nodes, scale, pan, isAltPressed, isShiftPressed],
+    [nodes, scale, pan, isAltPressed, isShiftPressed, isPremium, toggleNodeSelection],
+  )
+
+  const handleNodeContextMenu = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      if (!isPremium) return
+      e.preventDefault()
+      e.stopPropagation()
+      setContextMenu({ x: e.clientX, y: e.clientY, nodeId })
+    },
+    [isPremium],
   )
 
   const startPan = useCallback(
@@ -395,7 +392,17 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         }
 
         useGraphStore.getState().addEdge(newEdge)
+      } else if (settings.sheetViewMode === "panel" && !isCreatingEdge && !isAltPressed) {
+        // Detect click (no significant drag) to open node panel
+        const wasClick =
+          dragStartPosRef.current !== null &&
+          Math.hypot(e.clientX - dragStartPosRef.current.x, e.clientY - dragStartPosRef.current.y) < 5
+        if (wasClick) {
+          openNodePanel(targetNodeId)
+        }
       }
+
+      dragStartPosRef.current = null
 
       // Reset all interaction states
       setIsCreatingEdge(false)
@@ -405,10 +412,14 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
       setDragNode(null)
       setDragOffset({ x: 0, y: 0 })
     },
-    [isCreatingEdge, edgeStart, isAltPressed],
+    [isCreatingEdge, edgeStart, isAltPressed, settings.sheetViewMode, openNodePanel],
   )
 
   const handleMouseUp = useCallback(() => {
+    // If a drag just ended, persist the final node position to storage
+    if (isDragging) {
+      saveCampaign()
+    }
     setIsCreatingEdge(false)
     setEdgeStart(null)
     setEdgePreview(null)
@@ -416,7 +427,7 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
     setDragNode(null)
     setDragOffset({ x: 0, y: 0 })
     setIsPanning(false)
-  }, [])
+  }, [isDragging, saveCampaign])
 
   const zoomIn = () => {
     setScale((prev) => Math.min(prev * 1.2, 5))
@@ -481,6 +492,52 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
     const offsetMidY = baseMidY + perpY * currentOffset
 
     return `M ${sourceX} ${sourceY} Q ${offsetMidX} ${offsetMidY} ${targetX} ${targetY}`
+  }
+
+  const getEdgeLabelPosition = (
+    sourceNode: Node,
+    targetNode: Node,
+    edgeIndex: number,
+    totalEdges: number,
+  ): { x: number; y: number } => {
+    const baseMidX = (sourceNode.position.x + targetNode.position.x) / 2
+    const baseMidY = (sourceNode.position.y + targetNode.position.y) / 2 - 15
+
+    let controlX = baseMidX
+    let controlY = baseMidY
+
+    if (totalEdges > 1) {
+      const spacing = 40
+      const currentOffset = -((totalEdges - 1) * spacing) / 2 + edgeIndex * spacing
+      const dx = targetNode.position.x - sourceNode.position.x
+      const dy = targetNode.position.y - sourceNode.position.y
+      const length = Math.sqrt(dx * dx + dy * dy) || 1
+      controlX = baseMidX + (-dy / length) * currentOffset
+      controlY = baseMidY + (dx / length) * currentOffset
+    }
+
+    const t = 0.5
+    const midX =
+      (1 - t) * (1 - t) * sourceNode.position.x +
+      2 * (1 - t) * t * controlX +
+      t * t * targetNode.position.x
+    const midY =
+      (1 - t) * (1 - t) * sourceNode.position.y +
+      2 * (1 - t) * t * controlY +
+      t * t * targetNode.position.y
+
+    const staggerStep = 32
+    let staggerOffset = 0
+    if (totalEdges === 2) {
+      staggerOffset = edgeIndex === 0 ? -16 : -56
+    } else if (totalEdges > 1) {
+      const center = Math.floor(totalEdges / 2)
+      staggerOffset = (edgeIndex - center) * staggerStep
+      if (totalEdges % 2 === 0 && edgeIndex >= center) staggerOffset += staggerStep / 2
+    }
+
+    const staggerX = (edgeIndex - (totalEdges - 1) / 2) * 18
+    return { x: midX + staggerX, y: midY - 28 + staggerOffset }
   }
 
   const getPreviewEdgePath = (start: { x: number; y: number }, end: { x: number; y: number }) => {
@@ -608,17 +665,16 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
     const components = getConnectedComponents(nodes, edges)
     // Layout parameters
     const spacing = 400 // space between component centers
-    let layoutCenters: { x: number; y: number }[] = []
+    const layoutCenters: { x: number; y: number }[] = []
     // Arrange component centers in a grid
     const cols = Math.ceil(Math.sqrt(components.length))
-    const rows = Math.ceil(components.length / cols)
     for (let i = 0; i < components.length; i++) {
       const row = Math.floor(i / cols)
       const col = i % cols
       layoutCenters.push({ x: col * spacing, y: row * spacing })
     }
     // Calculate new positions
-    let newPositions: Record<string, { x: number; y: number }> = {}
+    const newPositions: Record<string, { x: number; y: number }> = {}
     components.forEach((component, i) => {
       // Find all edges within this component
       const nodeSet = new Set(component)
@@ -631,8 +687,8 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         labelWidths[key] = estimateLabelWidth(edge.label)
         edgeCounts[key] = (edgeCounts[key] || 0) + 1
       }
-      // Run force-directed layout
-      const positions = forceDirectedLayout(component, componentEdges, labelWidths, edgeCounts, 120)
+      // Run force-directed layout, passing nodes so sizes can be calculated accurately
+      const positions = forceDirectedLayout(component, componentEdges, labelWidths, edgeCounts, nodes, 120)
       // Offset to layout center
       const center = layoutCenters[i]
       // Calculate component centroid
@@ -652,34 +708,6 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         updateNode(node.id, { position: newPositions[node.id] })
       }
     })
-  }
-
-  useEffect(() => {
-    if (!onExpandGraph) return
-    // Patch the handler to log connected components for now
-    (RelationshipGraph as any).expandGraph = () => {
-      const components = getConnectedComponents(nodes, edges)
-      // eslint-disable-next-line no-console
-      console.log('Connected components:', components)
-    }
-  }, [nodes, edges, onExpandGraph])
-
-  // Helper to estimate card size based on node content
-  function estimateNodeSize(id: string) {
-    // Estimate width: name + status + up to 3 tags + padding
-    // Estimate height: 1 line for name, 1 for status, lines for description, lines for tags
-    // Use nodeIds as keys, fallback to defaults if not found
-    const node = (window as any)?.__allNodes?.find?.((n: any) => n.id === id)
-    const name = node?.data?.name || 'Node'
-    const status = node?.data?.status || ''
-    const tags = node?.data?.tags || []
-    const desc = node?.data?.description || ''
-    const tagCount = tags.length
-    const tagLines = Math.ceil(tagCount / 3)
-    const descLines = desc ? desc.split(/\r?\n/).length : 0
-    const width = Math.max(120, name.length * 9 + status.length * 7 + Math.min(3, tagCount) * 40 + (tagCount > 3 ? 40 : 0) + 32)
-    const height = 48 + tagLines * 24 + descLines * 18
-    return { width, height }
   }
 
   return (
@@ -707,16 +735,14 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         >
           <RefreshCw className="w-4 h-4" />
         </button>
-        {onExpandGraph && (
-          <button
-            onClick={handleExpandGraph}
-            className="bg-background p-2 rounded-md shadow-sm hover:bg-muted"
-            aria-label="Explode/Expand graph"
-            title="Explode/Expand graph"
-          >
-            <Expand className="w-4 h-4" />
-          </button>
-        )}
+        <button
+          onClick={handleExpandGraph}
+          className="bg-background p-2 rounded-md shadow-sm hover:bg-muted"
+          aria-label="Explode/Expand graph"
+          title="Explode/Expand graph"
+        >
+          <Expand className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Instructions overlay */}
@@ -729,6 +755,7 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         <div>• Click edge to edit relationship</div>
         <div>• Press Delete to remove selected relationship</div>
         <div>• Mouse wheel to zoom</div>
+        {isPremium && <div>• Ctrl+click nodes to multi-select, then right-click to group</div>}
       </div>
 
       {/* Mode indicator */}
@@ -762,6 +789,106 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         );
       })()}
 
+      {/* Multi-select indicator */}
+      {isPremium && selectedNodeIds.size > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-violet-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-20 flex items-center gap-2">
+          <span>{selectedNodeIds.size} node{selectedNodeIds.size > 1 ? "s" : ""} selected</span>
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:no-underline"
+            onClick={() => {
+              const ids = Array.from(selectedNodeIds)
+              setGroupNamePrompt({ nodeIds: ids })
+              setGroupNameInput("")
+            }}
+          >
+            Group
+          </button>
+          <button type="button" onClick={clearNodeSelection} className="ml-1 hover:text-violet-200">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Context menu */}
+      {isPremium && contextMenu && (
+        <div
+          className="fixed z-50 bg-background border border-border rounded-lg shadow-lg py-1 text-sm min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseLeave={() => setContextMenu(null)}
+        >
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2"
+            onClick={() => {
+              const nodeIds = selectedNodeIds.has(contextMenu.nodeId)
+                ? Array.from(selectedNodeIds)
+                : [contextMenu.nodeId]
+              setGroupNamePrompt({ nodeIds })
+              setGroupNameInput("")
+              setContextMenu(null)
+            }}
+          >
+            Group {selectedNodeIds.size > 1 ? `${selectedNodeIds.size} nodes` : "node"}
+          </button>
+          {groups.some((g) => g.nodeIds.includes(contextMenu.nodeId)) && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-2 hover:bg-muted text-destructive flex items-center gap-2"
+              onClick={() => {
+                const group = groups.find((g) => g.nodeIds.includes(contextMenu.nodeId))
+                if (group && confirm(`Remove group "${group.name}"?`)) removeGroup(group.id)
+                setContextMenu(null)
+              }}
+            >
+              Remove from group
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Group name dialog */}
+      {isPremium && groupNamePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background border border-border rounded-xl shadow-xl p-5 w-72 space-y-3">
+            <h3 className="font-semibold text-sm">Name this group</h3>
+            <p className="text-xs text-muted-foreground">{groupNamePrompt.nodeIds.length} node{groupNamePrompt.nodeIds.length > 1 ? "s" : ""} will be grouped.</p>
+            <input
+              className="w-full h-8 text-sm border border-border rounded px-2 bg-background"
+              value={groupNameInput}
+              autoFocus
+              onChange={(e) => setGroupNameInput(e.target.value)}
+              placeholder="Group name..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && groupNameInput.trim()) {
+                  addGroup({ id: `group-${Date.now()}`, name: groupNameInput.trim(), nodeIds: groupNamePrompt.nodeIds })
+                  clearNodeSelection()
+                  setGroupNamePrompt(null)
+                }
+                if (e.key === "Escape") setGroupNamePrompt(null)
+              }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted"
+                onClick={() => setGroupNamePrompt(null)}
+              >Cancel</button>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                disabled={!groupNameInput.trim()}
+                onClick={() => {
+                  addGroup({ id: `group-${Date.now()}`, name: groupNameInput.trim(), nodeIds: groupNamePrompt.nodeIds })
+                  clearNodeSelection()
+                  setGroupNamePrompt(null)
+                }}
+              >Create Group</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <svg
         ref={svgRef}
         className="w-full h-full"
@@ -771,6 +898,7 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
         onMouseDown={startPan}
         onMouseLeave={handleMouseUp}
         onDoubleClick={handleCanvasDoubleClick}
+        onClick={() => { setContextMenu(null) }}
       >
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
           {/* Render edges with proper spacing for multiple relationships */}
@@ -782,57 +910,6 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
               if (!sourceNode || !targetNode) return null
 
               const path = getEdgePath(sourceNode, targetNode, edgeIndex, groupEdges.length)
-
-              // Calculate label position with offset for multiple edges
-              const baseMidX = (sourceNode.position.x + targetNode.position.x) / 2
-              const baseMidY = (sourceNode.position.y + targetNode.position.y) / 2 - 15
-
-              let labelX = baseMidX
-              let labelY = baseMidY
-
-              // Stagger label Y for parallel edges
-              const siblingIndex = edgeIndex
-              const t = 0.5
-              const controlX = baseMidX + (groupEdges.length > 1 ? (() => {
-                const spacing = 40
-                const totalWidth = (groupEdges.length - 1) * spacing
-                const startOffset = -totalWidth / 2
-                const currentOffset = startOffset + edgeIndex * spacing
-                const dx = targetNode.position.x - sourceNode.position.x
-                const dy = targetNode.position.y - sourceNode.position.y
-                const length = Math.sqrt(dx * dx + dy * dy)
-                const perpX = -dy / length
-                return perpX * currentOffset
-              })() : 0)
-              const controlY = baseMidY + (groupEdges.length > 1 ? (() => {
-                const spacing = 40
-                const totalWidth = (groupEdges.length - 1) * spacing
-                const startOffset = -totalWidth / 2
-                const currentOffset = startOffset + edgeIndex * spacing
-                const dx = targetNode.position.x - sourceNode.position.x
-                const dy = targetNode.position.y - sourceNode.position.y
-                const length = Math.sqrt(dx * dx + dy * dy)
-                const perpY = dx / length
-                return perpY * currentOffset
-              })() : 0)
-              const midX = (1 - t) * (1 - t) * sourceNode.position.x + 2 * (1 - t) * t * controlX + t * t * targetNode.position.x
-              const midY = (1 - t) * (1 - t) * sourceNode.position.y + 2 * (1 - t) * t * controlY + t * t * targetNode.position.y
-              // Stagger: alternate above/below, center if odd
-              const staggerStep = 32
-              let staggerOffset = 0
-              if (groupEdges.length === 2) {
-                // Special case: two edges, one above, one below
-                staggerOffset = siblingIndex === 0 ? -16 : -56
-              } else if (groupEdges.length > 1) {
-                const center = Math.floor(groupEdges.length / 2)
-                staggerOffset = (siblingIndex - center) * staggerStep
-                if (groupEdges.length % 2 === 0 && siblingIndex >= center) staggerOffset += staggerStep / 2
-              }
-              // Add small X offset to further separate labels
-              const staggerX = (siblingIndex - (groupEdges.length - 1) / 2) * 18
-              labelX = midX + staggerX
-              labelY = midY - 28 + staggerOffset
-
               const isSelected = selectedEdge?.id === edge.id
 
               return (
@@ -856,9 +933,10 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
                       hoveredEdge === edge.id || isSelected ? "stroke-4" : "stroke-2",
                       getEdgeColor(edge.data.relationshipType),
                       isSelected && "opacity-80",
+                      edge.data.hiddenFromPlayers && !isSelected && "opacity-40",
                     )}
                     strokeWidth={hoveredEdge === edge.id || isSelected ? "4" : "2"}
-                    strokeDasharray={isSelected ? "8,4" : undefined}
+                    strokeDasharray={isSelected ? "8,4" : edge.data.hiddenFromPlayers ? "5,3" : undefined}
                   />
 
                   {/* Directional arrows along the path */}
@@ -875,58 +953,12 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
               const targetNode = nodes.find((n) => n.id === edge.target)
               if (!sourceNode || !targetNode) return null
 
-              // Calculate label position with offset for multiple edges
-              const baseMidX = (sourceNode.position.x + targetNode.position.x) / 2
-              const baseMidY = (sourceNode.position.y + targetNode.position.y) / 2 - 15
-
-              let labelX = baseMidX
-              let labelY = baseMidY
-
-              // Stagger label Y for parallel edges
-              const siblingIndex = edgeIndex
-              const t = 0.5
-              const controlX = baseMidX + (groupEdges.length > 1 ? (() => {
-                const spacing = 40
-                const totalWidth = (groupEdges.length - 1) * spacing
-                const startOffset = -totalWidth / 2
-                const currentOffset = startOffset + edgeIndex * spacing
-                const dx = targetNode.position.x - sourceNode.position.x
-                const dy = targetNode.position.y - sourceNode.position.y
-                const length = Math.sqrt(dx * dx + dy * dy)
-                const perpX = -dy / length
-                return perpX * currentOffset
-              })() : 0)
-              const controlY = baseMidY + (groupEdges.length > 1 ? (() => {
-                const spacing = 40
-                const totalWidth = (groupEdges.length - 1) * spacing
-                const startOffset = -totalWidth / 2
-                const currentOffset = startOffset + edgeIndex * spacing
-                const dx = targetNode.position.x - sourceNode.position.x
-                const dy = targetNode.position.y - sourceNode.position.y
-                const length = Math.sqrt(dx * dx + dy * dy)
-                const perpY = dx / length
-                return perpY * currentOffset
-              })() : 0)
-              const midX = (1 - t) * (1 - t) * sourceNode.position.x + 2 * (1 - t) * t * controlX + t * t * targetNode.position.x
-              const midY = (1 - t) * (1 - t) * sourceNode.position.y + 2 * (1 - t) * t * controlY + t * t * targetNode.position.y
-              // Stagger: alternate above/below, center if odd
-              const staggerStep = 32
-              let staggerOffset = 0
-              if (groupEdges.length === 2) {
-                // Special case: two edges, one above, one below
-                staggerOffset = siblingIndex === 0 ? -16 : -56
-              } else if (groupEdges.length > 1) {
-                const center = Math.floor(groupEdges.length / 2)
-                staggerOffset = (siblingIndex - center) * staggerStep
-                if (groupEdges.length % 2 === 0 && siblingIndex >= center) staggerOffset += staggerStep / 2
-              }
-              // Add small X offset to further separate labels
-              const staggerX = (siblingIndex - (groupEdges.length - 1) / 2) * 18
-              labelX = midX + staggerX
-              labelY = midY - 28 + staggerOffset
-
+              const { x: labelX, y: labelY } = getEdgeLabelPosition(sourceNode, targetNode, edgeIndex, groupEdges.length)
               const isSelected = selectedEdge?.id === edge.id
-              const label = edge.label;
+              const label = edge.label
+              const firstTagColor = isPremium
+                ? edge.data.tags.map((t) => tagColors[t]).find(Boolean)
+                : undefined
               const fontSize = 14;
               const fontWeight = 'bold';
               const paddingX = 8;
@@ -946,6 +978,16 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
                     rx={8}
                     fill="rgba(0,0,0,0.72)"
                   />
+                  {firstTagColor && (
+                    <circle
+                      cx={labelX + labelWidth / 2 - 6}
+                      cy={labelY - labelHeight / 2 - 4}
+                      r={5}
+                      fill={firstTagColor}
+                      stroke="rgba(0,0,0,0.4)"
+                      strokeWidth={1}
+                    />
+                  )}
                   <text
                     x={labelX}
                     y={labelY}
@@ -978,86 +1020,112 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
             />
           )}
 
+          {/* Render group bounding boxes (Pro) */}
+          {isPremium && groups.map((group) => {
+            const groupNodes = nodes.filter((n) => group.nodeIds.includes(n.id))
+            if (groupNodes.length === 0) return null
+            const xs = groupNodes.map((n) => n.position.x)
+            const ys = groupNodes.map((n) => n.position.y)
+            const padding = 80
+            const minX = Math.min(...xs) - padding
+            const minY = Math.min(...ys) - padding
+            const maxX = Math.max(...xs) + padding
+            const maxY = Math.max(...ys) + padding
+            const w = maxX - minX
+            const h = maxY - minY
+            const color = group.color ?? "#6b7280"
+            return (
+              <g key={group.id}>
+                <rect
+                  x={minX} y={minY} width={w} height={h}
+                  rx={16}
+                  fill={color + "14"}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeDasharray="8,4"
+                />
+                <foreignObject x={minX + 8} y={minY + 6} width={w - 16} height={28}>
+                  <div className="flex items-center gap-1">
+                    {editingGroupId === group.id ? (
+                      <>
+                        <input
+                          className="text-xs font-semibold bg-background border border-border rounded px-1.5 h-6 w-32"
+                          value={editingGroupName}
+                          autoFocus
+                          onChange={(e) => setEditingGroupName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") { updateGroup(group.id, { name: editingGroupName }); setEditingGroupId(null) }
+                            if (e.key === "Escape") setEditingGroupId(null)
+                          }}
+                          onBlur={() => { updateGroup(group.id, { name: editingGroupName }); setEditingGroupId(null) }}
+                        />
+                      </>
+                    ) : (
+                      <span
+                        className="text-xs font-semibold cursor-pointer select-none px-1 rounded hover:bg-muted/50"
+                        style={{ color }}
+                        onDoubleClick={() => { setEditingGroupId(group.id); setEditingGroupName(group.name) }}
+                        title="Double-click to rename"
+                      >
+                        {group.name}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="ml-auto p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); if (confirm(`Remove group "${group.name}"?`)) removeGroup(group.id) }}
+                      title="Remove group"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </foreignObject>
+              </g>
+            )
+          })}
+
           {/* Render nodes */}
           {nodes.map((node) => {
+            const hasSheet = isPremium && !!node.data.sheet
+            const isExpanded = hasSheet && expandedSheetNodes.has(node.id)
+            const sheet = node.data.sheet
+
             // Calculate dynamic height for the node card based on tag count
-            const baseHeight = 100; // base height for card with no tags
+            const baseHeight = 100;
             const tagsPerRow = 3;
             const tagRows = node.data.tags.length > 0 ? Math.ceil(node.data.tags.length / tagsPerRow) : 0;
-            const buffer = 40; // px buffer for padding/rounded corners
-            const tagRowHeight = 32; // px per row of tags (larger for long tags)
-            const dynamicHeight = baseHeight + tagRows * tagRowHeight + buffer;
+            const buffer = 40;
+            const tagRowHeight = 32;
+            let dynamicHeight = baseHeight + tagRows * tagRowHeight + buffer;
+
+            // Extra height when sheet is expanded inline
+            if (isExpanded && sheet) {
+              if (sheet.imageData) dynamicHeight += 96   // portrait area
+              if (sheet.race || sheet.class) dynamicHeight += 28
+              if (sheet.level !== undefined || sheet.alignment) dynamicHeight += 28
+              if (sheet.backstory) dynamicHeight += 60
+              if (sheet.notes) dynamicHeight += 44
+              if ((sheet.customFields?.length ?? 0) > 0) dynamicHeight += (sheet.customFields!.length * 24) + 8
+              dynamicHeight += 16 // bottom padding
+            }
 
             const maxVisibleTags = 3;
             const visibleTags = node.data.tags.slice(0, maxVisibleTags);
             const extraTagCount = node.data.tags.length - maxVisibleTags;
-
-            // Show description bubble above the node if hovered
-            const showDescriptionBubble = hoveredNode === node.id && node.data.description;
-            const bubbleWidth = 220;
-            const bubbleHeight = 80; // estimate, can be adjusted
+            const nodeWidth = isExpanded ? 240 : 200;
 
             return (
               <g key={node.id}>
-                {/* Connection handles - only show when Alt is pressed */}
-                {isAltPressed && (
-                  <>
-                    <circle
-                      cx={node.position.x - 110}
-                      cy={node.position.y}
-                      r="8"
-                      className="fill-primary stroke-background stroke-2 opacity-80 hover:opacity-100 cursor-crosshair"
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        startNodeInteraction(e, node.id)
-                      }}
-                    />
-                    <circle
-                      cx={node.position.x + 110}
-                      cy={node.position.y}
-                      r="8"
-                      className="fill-primary stroke-background stroke-2 opacity-80 hover:opacity-100 cursor-crosshair"
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        startNodeInteraction(e, node.id)
-                      }}
-                    />
-                    <circle
-                      cx={node.position.x}
-                      cy={node.position.y - 60}
-                      r="8"
-                      className="fill-primary stroke-background stroke-2 opacity-80 hover:opacity-100 cursor-crosshair"
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        startNodeInteraction(e, node.id)
-                      }}
-                    />
-                    <circle
-                      cx={node.position.x}
-                      cy={node.position.y + 60}
-                      r="8"
-                      className="fill-primary stroke-background stroke-2 opacity-80 hover:opacity-100 cursor-crosshair"
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        startNodeInteraction(e, node.id)
-                      }}
-                    />
-                  </>
-                )}
-
                 <foreignObject
-                  x={node.position.x - 100}
+                  x={node.position.x - nodeWidth / 2}
                   y={node.position.y - dynamicHeight / 2}
-                  width="200"
+                  width={nodeWidth}
                   height={dynamicHeight}
-                  onMouseDown={(e) => {
-                    startNodeInteraction(e, node.id)
-                  }}
+                  onMouseDown={(e) => startNodeInteraction(e, node.id)}
                   onMouseUp={(e) => handleNodeMouseUp(e, node.id)}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    handleNodeDoubleClick(node);
-                  }}
+                  onDoubleClick={(e) => { e.stopPropagation(); handleNodeDoubleClick(node); }}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
                   onMouseEnter={() => setHoveredNode(node.id)}
                   onMouseLeave={() => setHoveredNode(null)}
                   style={{
@@ -1071,49 +1139,126 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
                   }}
                 >
                   <div className={cn(
-                    "min-w-[200px] max-w-xs p-3 shadow-lg border-2 transition-all select-none rounded-xl bg-background border-border",
+                    "p-3 shadow-lg border-2 transition-all select-none rounded-xl bg-background border-border relative",
+                    isExpanded && "pb-2",
                     isDragging && dragNode === node.id && "shadow-xl border-primary scale-105",
                     hoveredNode === node.id && !isDragging && "border-primary/50 shadow-xl",
                     isAltPressed && "border-primary/30",
+                    node.data.hiddenFromPlayers && "border-dashed border-amber-500/60 opacity-75",
+                    isPremium && selectedNodeIds.has(node.id) && "border-violet-500 ring-2 ring-violet-400/40",
                   )}>
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center",
-                          getNodeColor(node.data.type),
-                        )}
-                      >
-                        {getNodeIcon(node.data.type)}
+                    {node.data.hiddenFromPlayers && (
+                      <div className="absolute -top-2 -right-2 bg-amber-500 rounded-full p-0.5" title="Hidden from players">
+                        <EyeOff className="w-2.5 h-2.5 text-white" />
                       </div>
+                    )}
+                    <div className="flex items-start gap-3">
+                      {/* Portrait or icon */}
+                      {hasSheet && sheet?.imageData ? (
+                        <img
+                          src={sheet.imageData}
+                          alt={node.data.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0 border border-border"
+                          draggable={false}
+                        />
+                      ) : (
+                        <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0", getNodeColor(node.data.type))}>
+                          {getNodeIcon(node.data.type)}
+                        </div>
+                      )}
+
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-sm truncate select-none">{node.data.name}</h3>
                         <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs select-none">
-                            {node.data.type}
-                          </Badge>
-                          <Badge
-                            variant={node.data.status === "Alive" ? "default" : "secondary"}
-                            className="text-xs select-none"
-                          >
+                          <Badge variant="outline" className="text-xs select-none">{node.data.type}</Badge>
+                          <Badge variant={node.data.status === "Alive" ? "default" : "secondary"} className="text-xs select-none">
                             {node.data.status}
                           </Badge>
                         </div>
                         {node.data.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2 max-w-[170px]">
-                            {visibleTags.map((tag, index) => (
-                              <Badge key={index} variant="secondary" className="text-xs select-none break-all">
-                                {tag}
-                              </Badge>
-                            ))}
+                            {visibleTags.map((tag, index) => {
+                              const tagColor = isPremium ? tagColors[tag] : undefined
+                              return (
+                                <Badge
+                                  key={index}
+                                  variant="secondary"
+                                  className="text-xs select-none break-all flex items-center gap-1"
+                                  style={tagColor ? { borderColor: tagColor, borderWidth: 1 } : undefined}
+                                >
+                                  {tagColor && (
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                                      style={{ background: tagColor }}
+                                    />
+                                  )}
+                                  {tag}
+                                </Badge>
+                              )
+                            })}
                             {extraTagCount > 0 && (
-                              <Badge variant="secondary" className="text-xs select-none">
-                                +{extraTagCount} more
-                              </Badge>
+                              <Badge variant="secondary" className="text-xs select-none">+{extraTagCount} more</Badge>
                             )}
                           </div>
                         )}
                       </div>
+
+                      {/* Sheet expand toggle */}
+                      {hasSheet && settings.sheetViewMode === "modal" && (
+                        <button
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); toggleSheetExpanded(node.id); }}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground"
+                          title={isExpanded ? "Collapse sheet" : "Expand sheet"}
+                        >
+                          {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                      )}
                     </div>
+
+                    {/* Inline expanded sheet */}
+                    {isExpanded && sheet && (
+                      <div className="mt-3 pt-2 border-t border-border space-y-2 text-xs">
+                        {sheet.imageData && (
+                          <div className="flex justify-center">
+                            <img
+                              src={sheet.imageData}
+                              alt={node.data.name}
+                              className="w-20 h-20 rounded-lg object-cover border border-border"
+                              draggable={false}
+                            />
+                          </div>
+                        )}
+                        {(sheet.race || sheet.class) && (
+                          <div className="flex gap-3 text-muted-foreground">
+                            {sheet.race && <span><span className="font-medium text-foreground">Race:</span> {sheet.race}</span>}
+                            {sheet.class && <span><span className="font-medium text-foreground">Class:</span> {sheet.class}</span>}
+                          </div>
+                        )}
+                        {(sheet.level !== undefined || sheet.alignment) && (
+                          <div className="flex gap-3 text-muted-foreground">
+                            {sheet.level !== undefined && <span><span className="font-medium text-foreground">Lvl:</span> {sheet.level}</span>}
+                            {sheet.alignment && <span><span className="font-medium text-foreground">Align:</span> {sheet.alignment}</span>}
+                          </div>
+                        )}
+                        {sheet.backstory && (
+                          <div className="text-muted-foreground line-clamp-3">
+                            <span className="font-medium text-foreground">Backstory:</span> {sheet.backstory}
+                          </div>
+                        )}
+                        {sheet.notes && (
+                          <div className="text-muted-foreground line-clamp-2">
+                            <span className="font-medium text-foreground">Notes:</span> {sheet.notes}
+                          </div>
+                        )}
+                        {(sheet.customFields?.length ?? 0) > 0 && sheet.customFields!.map((f, i) => (
+                          <div key={i} className="flex gap-2 text-muted-foreground">
+                            <span className="font-medium text-foreground">{f.key}:</span>
+                            <span>{f.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </foreignObject>
               </g>
@@ -1125,271 +1270,3 @@ export function RelationshipGraph({ onExpandGraph }: { onExpandGraph?: () => voi
   )
 }
 
-// Utility to find connected components in the graph
-function getConnectedComponents(nodes: Node[], edges: Edge[]): string[][] {
-  const visited = new Set<string>()
-  const adj: Record<string, string[]> = {}
-  nodes.forEach((node) => (adj[node.id] = []))
-  edges.forEach((edge) => {
-    adj[edge.source].push(edge.target)
-    adj[edge.target].push(edge.source)
-  })
-  const components: string[][] = []
-  for (const node of nodes) {
-    if (!visited.has(node.id)) {
-      const queue = [node.id]
-      const component: string[] = []
-      visited.add(node.id)
-      while (queue.length) {
-        const curr = queue.shift()!
-        component.push(curr)
-        for (const neighbor of adj[curr]) {
-          if (!visited.has(neighbor)) {
-            visited.add(neighbor)
-            queue.push(neighbor)
-          }
-        }
-      }
-      components.push(component)
-    }
-  }
-  return components
-}
-
-// Helper to estimate label width in pixels
-function estimateLabelWidth(label: string) {
-  // Approximate: 8px per character for small font
-  return Math.max(60, label.length * 8 + 24) // min 60px, add padding
-}
-
-// Helper to check if two line segments cross
-function edgesCross(a1: { x: number; y: number }, a2: { x: number; y: number }, b1: { x: number; y: number }, b2: { x: number; y: number }) {
-  function ccw(p1: any, p2: any, p3: any) {
-    return (p3.y - p1.y) * (p2.x - p1.x) > (p2.y - p1.y) * (p3.x - p1.x)
-  }
-  return (
-    ccw(a1, b1, b2) !== ccw(a2, b1, b2) &&
-    ccw(a1, a2, b1) !== ccw(a1, a2, b2)
-  )
-}
-
-// Custom force-directed layout for a component
-function forceDirectedLayout(
-  nodeIds: string[],
-  edges: Edge[],
-  labelWidths: Record<string, number>,
-  edgeCounts: Record<string, number>,
-  iterations = 100,
-  width = 600,
-  height = 600
-) {
-  // Helper to estimate card size based on node content
-  function estimateNodeSize(id: string) {
-    // Estimate width: name + status + up to 3 tags + padding
-    // Estimate height: 1 line for name, 1 for status, lines for description, lines for tags
-    // Use nodeIds as keys, fallback to defaults if not found
-    const node = (window as any)?.__allNodes?.find?.((n: any) => n.id === id)
-    const name = node?.data?.name || 'Node'
-    const status = node?.data?.status || ''
-    const tags = node?.data?.tags || []
-    const desc = node?.data?.description || ''
-    const tagCount = tags.length
-    const tagLines = Math.ceil(tagCount / 3)
-    const descLines = desc ? desc.split(/\r?\n/).length : 0
-    const width = Math.max(120, name.length * 9 + status.length * 7 + Math.min(3, tagCount) * 40 + (tagCount > 3 ? 40 : 0) + 32)
-    const height = 48 + tagLines * 24 + descLines * 18
-    return { width, height }
-  }
-
-  // Initialize positions in a circle
-  const n = nodeIds.length
-  const angleStep = (2 * Math.PI) / n
-  let positions: Record<string, { x: number; y: number }> = {}
-  for (let i = 0; i < n; i++) {
-    positions[nodeIds[i]] = {
-      x: width / 2 + 200 * Math.cos(i * angleStep),
-      y: height / 2 + 200 * Math.sin(i * angleStep),
-    }
-  }
-  // Build adjacency
-  const adj: Record<string, Set<string>> = {}
-  nodeIds.forEach((id) => (adj[id] = new Set()))
-  edges.forEach((e) => {
-    adj[e.source].add(e.target)
-    adj[e.target].add(e.source)
-  })
-  // Helper to count edge crossings
-  function countCrossings(pos: Record<string, { x: number; y: number }>) {
-    let count = 0;
-    for (let i = 0; i < edges.length; i++) {
-      for (let j = i + 1; j < edges.length; j++) {
-        const e1 = edges[i], e2 = edges[j];
-        if (
-          e1.source !== e2.source &&
-          e1.source !== e2.target &&
-          e1.target !== e2.source &&
-          e1.target !== e2.target
-        ) {
-          const a1 = pos[e1.source], a2 = pos[e1.target];
-          const b1 = pos[e2.source], b2 = pos[e2.target];
-          if (edgesCross(a1, a2, b1, b2)) count++;
-        }
-      }
-    }
-    return count;
-  }
-  // Simulation
-  for (let iter = 0; iter < iterations; iter++) {
-    // Forces
-    const disp: Record<string, { x: number; y: number }> = {}
-    nodeIds.forEach((id) => (disp[id] = { x: 0, y: 0 }))
-    // Repulsion
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const a = nodeIds[i], b = nodeIds[j]
-        const sizeA = estimateNodeSize(a)
-        const sizeB = estimateNodeSize(b)
-        const ax = positions[a].x, ay = positions[a].y
-        const bx = positions[b].x, by = positions[b].y
-        const margin = 64
-        // Check bounding box overlap
-        if (
-          Math.abs(ax - bx) < (sizeA.width + sizeB.width) / 2 + margin &&
-          Math.abs(ay - by) < (sizeA.height + sizeB.height) / 2 + margin
-        ) {
-          // Overlap: apply strong repulsion
-          const dx = ax - bx
-          const dy = ay - by
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.01
-          const overlapX = (sizeA.width + sizeB.width) / 2 + margin - Math.abs(ax - bx)
-          const overlapY = (sizeA.height + sizeB.height) / 2 + margin - Math.abs(ay - by)
-          const force = 1.2 * (overlapX + overlapY)
-          disp[a].x += (dx / dist) * force
-          disp[a].y += (dy / dist) * force
-          disp[b].x -= (dx / dist) * force
-          disp[b].y -= (dy / dist) * force
-        }
-      }
-    }
-    // Spring (edge) attraction
-    edges.forEach((e) => {
-      if (!nodeIds.includes(e.source) || !nodeIds.includes(e.target)) return
-      const a = e.source, b = e.target
-      const dx = positions[a].x - positions[b].x
-      const dy = positions[a].y - positions[b].y
-      let dist = Math.sqrt(dx * dx + dy * dy) || 0.01
-      // Desired length: label width + padding + extra per relationship
-      const key = [a, b].sort().join('-')
-      const numRels = edgeCounts[key] || 1
-      const desired = (labelWidths[key] || 10) + 10 + (numRels - 1) * 30
-      const force = 0.1 * (dist - desired)
-      disp[a].x -= (dx / dist) * force
-      disp[a].y -= (dy / dist) * force
-      disp[b].x += (dx / dist) * force
-      disp[b].y += (dy / dist) * force
-    })
-    // Radial/circular force: nudge nodes toward average radius from centroid
-    // 1. Calculate centroid
-    let sumX = 0, sumY = 0;
-    nodeIds.forEach((id) => {
-      sumX += positions[id].x;
-      sumY += positions[id].y;
-    });
-    const centroid = { x: sumX / n, y: sumY / n };
-    // 2. Calculate average radius
-    let totalRadius = 0;
-    nodeIds.forEach((id) => {
-      const dx = positions[id].x - centroid.x;
-      const dy = positions[id].y - centroid.y;
-      totalRadius += Math.sqrt(dx * dx + dy * dy);
-    });
-    const avgRadius = totalRadius / n;
-    // 3. Nudge each node toward avgRadius from centroid
-    nodeIds.forEach((id) => {
-      const dx = positions[id].x - centroid.x;
-      const dy = positions[id].y - centroid.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const radialForce = 0.05 * (avgRadius - dist);
-      disp[id].x += (dx / dist) * radialForce;
-      disp[id].y += (dy / dist) * radialForce;
-      // Angle regularization: nudge node toward its ideal angle
-      const idx = nodeIds.indexOf(id);
-      const idealAngle = (2 * Math.PI * idx) / n;
-      const currentAngle = Math.atan2(dy, dx);
-      const angleDiff = idealAngle - currentAngle;
-      // Move node tangentially to match ideal angle
-      const angleForce = 0.08 * angleDiff * dist;
-      disp[id].x += -Math.sin(currentAngle) * angleForce;
-      disp[id].y += Math.cos(currentAngle) * angleForce;
-    });
-    // Edge crossing minimization: strong repulsion for crossing edges
-    for (let i = 0; i < edges.length; i++) {
-      for (let j = i + 1; j < edges.length; j++) {
-        const e1 = edges[i], e2 = edges[j];
-        if (
-          e1.source !== e2.source &&
-          e1.source !== e2.target &&
-          e1.target !== e2.source &&
-          e1.target !== e2.target
-        ) {
-          const a1 = positions[e1.source], a2 = positions[e1.target];
-          const b1 = positions[e2.source], b2 = positions[e2.target];
-          if (edgesCross(a1, a2, b1, b2)) {
-            // Apply strong repulsion to all involved nodes
-            const repel = 120;
-            disp[e1.source].x += repel * Math.sign(a1.x - b1.x);
-            disp[e1.source].y += repel * Math.sign(a1.y - b1.y);
-            disp[e1.target].x += repel * Math.sign(a2.x - b2.x);
-            disp[e1.target].y += repel * Math.sign(a2.y - b2.y);
-            disp[e2.source].x -= repel * Math.sign(b1.x - a1.x);
-            disp[e2.source].y -= repel * Math.sign(b1.y - a1.y);
-            disp[e2.target].x -= repel * Math.sign(b2.x - a2.x);
-            disp[e2.target].y -= repel * Math.sign(b2.y - a2.y);
-          }
-        }
-      }
-    }
-    // Update positions
-    nodeIds.forEach((id) => {
-      positions[id].x += Math.max(-30, Math.min(30, disp[id].x * 0.01))
-      positions[id].y += Math.max(-30, Math.min(30, disp[id].y * 0.01))
-    })
-    // Clamp each node's distance from centroid to a max (e.g., 500px)
-    const maxRadius = 500;
-    nodeIds.forEach((id) => {
-      const dx = positions[id].x - centroid.x;
-      const dy = positions[id].y - centroid.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > maxRadius) {
-        const scale = maxRadius / dist;
-        positions[id].x = centroid.x + dx * scale;
-        positions[id].y = centroid.y + dy * scale;
-      }
-    });
-  }
-  // Post-processing: local node swapping to reduce crossings
-  let improved = true;
-  let bestCrossings = countCrossings(positions);
-  for (let swapIter = 0; swapIter < 10 && improved; swapIter++) {
-    improved = false;
-    for (let i = 0; i < nodeIds.length; i++) {
-      for (let j = i + 1; j < nodeIds.length; j++) {
-        // Swap positions of nodeIds[i] and nodeIds[j]
-        const temp = { ...positions[nodeIds[i]] };
-        positions[nodeIds[i]] = { ...positions[nodeIds[j]] };
-        positions[nodeIds[j]] = temp;
-        const crossings = countCrossings(positions);
-        if (crossings < bestCrossings) {
-          bestCrossings = crossings;
-          improved = true;
-        } else {
-          // Swap back if not improved
-          const temp2 = { ...positions[nodeIds[i]] };
-          positions[nodeIds[i]] = { ...positions[nodeIds[j]] };
-          positions[nodeIds[j]] = temp2;
-        }
-      }
-    }
-  }
-  return positions;
-}

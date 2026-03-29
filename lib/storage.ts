@@ -1,6 +1,7 @@
 "use client"
 
 import type { Node, Edge } from "@/components/relationship-graph"
+import type { JournalEntry, QuestGoal, NodeGroup } from "@/lib/graph-types"
 
 export interface Campaign {
   id: string
@@ -10,6 +11,10 @@ export interface Campaign {
   updatedAt: Date
   nodes: Node[]
   edges: Edge[]
+  journal?: JournalEntry[]
+  goals?: QuestGoal[]
+  groups?: NodeGroup[]
+  tagColors?: Record<string, string>
 }
 
 const STORAGE_KEY = "npc-relationship-campaigns"
@@ -29,6 +34,10 @@ export class CampaignStorage {
         updatedAt: new Date(campaign.updatedAt),
         nodes: campaign.nodes || [],
         edges: campaign.edges || [],
+        journal: campaign.journal || [],
+        goals: campaign.goals || [],
+        groups: campaign.groups || [],
+        tagColors: campaign.tagColors || {},
       }))
     } catch (error) {
       console.error("Error loading campaigns:", error)
@@ -94,14 +103,17 @@ export class CampaignStorage {
 
   static exportCampaign(campaign: Campaign): string {
     try {
-      // Create a clean export object
       const exportData = {
+        version: "2.0",
+        exportedAt: new Date().toISOString(),
         name: campaign.name,
         description: campaign.description,
         nodes: campaign.nodes,
         edges: campaign.edges,
-        exportedAt: new Date().toISOString(),
-        version: "1.0",
+        journal: campaign.journal ?? [],
+        goals: campaign.goals ?? [],
+        groups: campaign.groups ?? [],
+        tagColors: campaign.tagColors ?? {},
       }
 
       return JSON.stringify(exportData, null, 2)
@@ -129,6 +141,10 @@ export class CampaignStorage {
         updatedAt: new Date(),
         nodes: campaignData.nodes || [],
         edges: campaignData.edges || [],
+        journal: campaignData.journal || [],
+        goals: campaignData.goals || [],
+        groups: campaignData.groups || [],
+        tagColors: campaignData.tagColors || {},
       }
 
       // Validate nodes and edges structure
