@@ -6,6 +6,7 @@ import "./globals.css"
 import { Analytics } from "@vercel/analytics/react"
 import { Suspense } from "react"
 import { ThemeProvider } from "@/components/theme-provider"
+import { MobileGate } from "@/components/mobile-gate"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -35,7 +36,9 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <Suspense fallback={<div>Loading...</div>}>
-            {children}
+            <MobileGate>
+              {children}
+            </MobileGate>
             <Analytics />
           </Suspense>
         </ThemeProvider>

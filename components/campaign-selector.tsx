@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,20 +10,42 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
-import { Plus, Calendar, Users, Trash2, Edit, Coffee, ExternalLink } from "lucide-react"
+import { Plus, Calendar, Users, Trash2, Edit, Sparkles, LayoutTemplate } from "lucide-react"
 import { useGraphStore } from "@/lib/store"
 import type { Campaign } from "@/lib/storage"
+import { CAMPAIGN_TEMPLATES } from "@/lib/templates"
 
 interface CampaignSelectorProps {
   onCampaignSelect: (campaign: Campaign) => void
+}
+
+declare global {
+  interface Window {
+    adsbygoogle: unknown[]
+  }
 }
 
 export function CampaignSelector({ onCampaignSelect }: CampaignSelectorProps) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newCampaignName, setNewCampaignName] = useState("")
   const [newCampaignDescription, setNewCampaignDescription] = useState("")
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [templateCampaignName, setTemplateCampaignName] = useState("")
+  const adRef = useRef<HTMLModElement>(null)
 
-  const { campaigns, loadCampaigns, createCampaign, deleteCampaign } = useGraphStore()
+  const { campaigns, loadCampaigns, createCampaign, createCampaignFromTemplate, deleteCampaign, isPremium } = useGraphStore()
+
+  useEffect(() => {
+    try {
+      if (adRef.current && adRef.current.dataset.adStatus !== "done") {
+        window.adsbygoogle = window.adsbygoogle || []
+        window.adsbygoogle.push({})
+      }
+    } catch {
+      // AdSense not loaded yet
+    }
+  }, [])
 
   useEffect(() => {
     loadCampaigns()
@@ -46,8 +68,18 @@ export function CampaignSelector({ onCampaignSelect }: CampaignSelectorProps) {
     }
   }
 
-  const handleKofiClick = () => {
-    window.open("https://ko-fi.com/gavello685#", "_blank", "noopener,noreferrer")
+  const handleCreateFromTemplate = () => {
+    const tmpl = CAMPAIGN_TEMPLATES.find((t) => t.id === selectedTemplateId)
+    if (!tmpl || !templateCampaignName.trim()) return
+    const campaign = createCampaignFromTemplate(templateCampaignName.trim(), tmpl.data)
+    setTemplateCampaignName("")
+    setSelectedTemplateId(null)
+    setIsTemplateModalOpen(false)
+    onCampaignSelect(campaign)
+  }
+
+  const handleUpgradeClick = () => {
+    window.open("https://gavello.gumroad.com/l/utlht", "_blank", "noopener,noreferrer")
   }
 
   const formatDate = (date: Date) => {
@@ -73,7 +105,65 @@ export function CampaignSelector({ onCampaignSelect }: CampaignSelectorProps) {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-semibold">Your Campaigns</h2>
 
-          <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+          <div className="flex gap-2">
+            {isPremium && (
+              <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <LayoutTemplate className="w-4 h-4 mr-2" />
+                    From Template
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Start from a Template</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      {CAMPAIGN_TEMPLATES.map((tmpl) => (
+                        <button
+                          key={tmpl.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTemplateId(tmpl.id)
+                            setTemplateCampaignName(tmpl.name)
+                          }}
+                          className={`text-left p-3 rounded-lg border-2 transition-colors ${selectedTemplateId === tmpl.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                        >
+                          <div className="font-semibold text-sm">{tmpl.name}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{tmpl.preview}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedTemplateId && (
+                      <div>
+                        <Label htmlFor="template-name">Campaign Name</Label>
+                        <Input
+                          id="template-name"
+                          className="mt-1"
+                          value={templateCampaignName}
+                          onChange={(e) => setTemplateCampaignName(e.target.value)}
+                          placeholder="Name your campaign..."
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setIsTemplateModalOpen(false)}>Cancel</Button>
+                      <Button
+                        onClick={handleCreateFromTemplate}
+                        disabled={!selectedTemplateId || !templateCampaignName.trim()}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create Campaign
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
@@ -117,6 +207,7 @@ export function CampaignSelector({ onCampaignSelect }: CampaignSelectorProps) {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {campaigns.length === 0 ? (
@@ -133,16 +224,15 @@ export function CampaignSelector({ onCampaignSelect }: CampaignSelectorProps) {
                   Create Your First Campaign
                 </Button>
                 <div className="text-sm text-muted-foreground">
-                  <span>Enjoying this tool? </span>
+                  <span>Want portraits, character sheets &amp; more? </span>
                   <Button
                     variant="link"
                     size="sm"
-                    onClick={handleKofiClick}
-                    className="text-orange-600 hover:text-orange-700 p-0 h-auto font-normal"
+                    onClick={handleUpgradeClick}
+                    className="text-yellow-600 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-300 p-0 h-auto font-normal"
                   >
-                    <Coffee className="w-3 h-3 mr-1" />
-                    Help me make more
-                    <ExternalLink className="w-2 h-2 ml-1" />
+                    <Sparkles className="w-3 h-3 mr-1" />
+                    Upgrade to Pro
                   </Button>
                 </div>
               </div>
@@ -208,21 +298,32 @@ export function CampaignSelector({ onCampaignSelect }: CampaignSelectorProps) {
 
             <div className="mt-8 text-center">
               <div className="text-sm text-muted-foreground">
-                <span>Find this tool helpful? </span>
+                <span>Want portraits, character sheets &amp; more? </span>
                 <Button
                   variant="link"
                   size="sm"
-                  onClick={handleKofiClick}
-                  className="text-orange-600 hover:text-orange-700 p-0 h-auto font-normal"
+                  onClick={handleUpgradeClick}
+                  className="text-yellow-600 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-300 p-0 h-auto font-normal"
                 >
-                  <Coffee className="w-3 h-3 mr-1" />
-                  Help me make more
-                  <ExternalLink className="w-2 h-2 ml-1" />
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  Upgrade to Pro
                 </Button>
               </div>
             </div>
           </>
         )}
+        {/* Ad unit — replace data-ad-slot with your AdSense ad unit slot ID */}
+        <div className="mt-8 flex justify-center">
+          <ins
+            ref={adRef}
+            className="adsbygoogle"
+            style={{ display: "block" }}
+            data-ad-client="ca-pub-4007716356003328"
+            data-ad-slot="YOUR_AD_SLOT_ID"
+            data-ad-format="auto"
+            data-full-width-responsive="true"
+          />
+        </div>
       </div>
     </div>
   )

@@ -13,8 +13,10 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { X, ArrowRight, ArrowLeft, ArrowLeftRight, Trash2 } from "lucide-react"
+import { X, ArrowRight, ArrowLeft, ArrowLeftRight, Trash2, History, Plus, Sparkles } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useGraphStore } from "@/lib/store"
+import type { RelationshipHistoryEntry } from "@/lib/graph-types"
 
 interface RelationshipModalProps {
   open: boolean
@@ -22,7 +24,7 @@ interface RelationshipModalProps {
 }
 
 export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps) {
-  const { selectedEdge, nodes, updateEdge, removeEdge, setSelectedEdge } = useGraphStore()
+  const { selectedEdge, nodes, updateEdge, removeEdge, setSelectedEdge, isPremium, addRelationshipHistoryNote, removeRelationshipHistoryEntry } = useGraphStore()
   const [formData, setFormData] = useState({
     relationshipType: "Neutral",
     strength: [50],
@@ -33,6 +35,12 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
     hiddenFromPlayers: false,
   })
   const [newTag, setNewTag] = useState("")
+  // History note form
+  const [histNote, setHistNote] = useState("")
+  const [histSession, setHistSession] = useState("")
+  const [histInGame, setHistInGame] = useState("")
+  const [histRealDate, setHistRealDate] = useState("")
+  const [addingNote, setAddingNote] = useState(false)
 
   useEffect(() => {
     if (selectedEdge) {
@@ -113,11 +121,33 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
     }
   }
 
+  const handleAddHistoryNote = () => {
+    if (!selectedEdge || !histNote.trim()) return
+    const entry: RelationshipHistoryEntry = {
+      id: `hist-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      note: histNote.trim(),
+      session: {
+        sessionNumber: histSession ? Number(histSession) : undefined,
+        inGameDate: histInGame.trim() || undefined,
+        realDate: histRealDate.trim() || undefined,
+      },
+    }
+    addRelationshipHistoryNote(selectedEdge.id, entry)
+    setHistNote("")
+    setHistSession("")
+    setHistInGame("")
+    setHistRealDate("")
+    setAddingNote(false)
+  }
+
   if (!selectedEdge) return null
+
+  const history = selectedEdge.data.history ?? []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Relationship</DialogTitle>
           <p className="text-sm text-muted-foreground">
@@ -125,6 +155,118 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
           </p>
         </DialogHeader>
 
+        <Tabs defaultValue="details">
+          <TabsList className="w-full mb-2">
+            <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 flex items-center gap-1">
+              <History className="w-3 h-3" />
+              History
+              {!isPremium && <Sparkles className="w-3 h-3 text-yellow-500" />}
+              {isPremium && history.length > 0 && (
+                <span className="ml-1 text-xs bg-muted px-1.5 rounded-full">{history.length}</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="history">
+            {!isPremium ? (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <Sparkles className="w-10 h-10 text-yellow-500" />
+                <h3 className="font-semibold text-base">Pro Feature</h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Relationship history is available with Spider&apos;s Web Pro. Track how bonds evolve across sessions.
+                </p>
+                <a href="https://gavello.gumroad.com/l/utlht" target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline underline-offset-2">
+                  Get Pro on Gumroad →
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {history.length === 0 && !addingNote && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No history yet. Changes to this relationship are tracked automatically, or add a note manually.</p>
+                )}
+                {[...history].reverse().map((entry) => (
+                  <div key={entry.id} className="border rounded-lg p-3 text-sm space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1 flex-1">
+                        {entry.changes && entry.changes.length > 0 && (
+                          <ul className="space-y-0.5">
+                            {entry.changes.map((c, i) => (
+                              <li key={i} className="text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground capitalize">{c.field}</span>: {String(c.from)} → {String(c.to)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {entry.note && <p className="text-sm">{entry.note}</p>}
+                        <div className="flex gap-2 text-xs text-muted-foreground flex-wrap">
+                          {entry.session.sessionNumber !== undefined && <span>Session {entry.session.sessionNumber}</span>}
+                          {entry.session.inGameDate && <span>{entry.session.inGameDate}</span>}
+                          {entry.session.realDate && <span>{entry.session.realDate}</span>}
+                          {!entry.session.sessionNumber && !entry.session.inGameDate && !entry.session.realDate && (
+                            <span>{new Date(entry.createdAt).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeRelationshipHistoryEntry(selectedEdge.id, entry.id)}
+                        title="Remove entry"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {addingNote ? (
+                  <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+                    <Textarea
+                      value={histNote}
+                      onChange={(e) => setHistNote(e.target.value)}
+                      placeholder="Narrative note — e.g. 'Betrayed the party in Session 4'"
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={histSession}
+                        onChange={(e) => setHistSession(e.target.value)}
+                        placeholder="Session #"
+                        className="h-7 text-xs"
+                      />
+                      <Input
+                        value={histInGame}
+                        onChange={(e) => setHistInGame(e.target.value)}
+                        placeholder="In-game date"
+                        className="h-7 text-xs"
+                      />
+                      <Input
+                        type="date"
+                        value={histRealDate}
+                        onChange={(e) => setHistRealDate(e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setAddingNote(false)}>Cancel</Button>
+                      <Button type="button" size="sm" onClick={handleAddHistoryNote} disabled={!histNote.trim()}>Save Note</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setAddingNote(true)}>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Add Narrative Note
+                  </Button>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="details">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label htmlFor="type">Relationship Type</Label>
@@ -275,6 +417,8 @@ export function RelationshipModal({ open, onOpenChange }: RelationshipModalProps
             </Button>
           </div>
         </form>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   )
